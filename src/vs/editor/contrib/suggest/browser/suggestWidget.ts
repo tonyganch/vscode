@@ -38,6 +38,7 @@ interface ISuggestionTemplateData {
 	icon: HTMLElement;
 	colorspan: HTMLElement;
 	highlightedLabel: HighlightedLabel;
+	typeLabel: HTMLElement;
 	disposables: IDisposable[];
 }
 
@@ -93,6 +94,8 @@ class Renderer implements IRenderer<ICompletionItem, ISuggestionTemplateData> {
 		const main = append(text, $('.main'));
 		data.highlightedLabel = new HighlightedLabel(main);
 		data.disposables.push(data.highlightedLabel);
+		data.typeLabel = append(main, $('span.type-label'));
+
 		const configureFont = () => {
 			const configuration = this.editor.getConfiguration();
 			const fontFamily = configuration.fontInfo.fontFamily;
@@ -139,8 +142,10 @@ class Renderer implements IRenderer<ICompletionItem, ISuggestionTemplateData> {
 		}
 
 		data.highlightedLabel.set(suggestion.label, createMatches(element.matches));
-
-
+		data.typeLabel.textContent = '';
+		if (this.editor.getConfiguration().contribInfo.suggestExpandDocs !== 'side') {
+			data.typeLabel.textContent = (suggestion.detail || '').replace(/\n.*$/m, '');
+		}
 	}
 
 	disposeTemplate(templateData: ISuggestionTemplateData): void {
@@ -308,7 +313,7 @@ export class SuggestWidget implements IContentWidget, IDelegate<ICompletionItem>
 
 	private readonly maxWidgetWidth = 660;
 	private readonly listWidth = 330;
-	private readonly minWidgetWidth = 400;
+	private readonly minWidgetWidth = 430;
 
 	constructor(
 		private editor: ICodeEditor,
@@ -792,7 +797,7 @@ export class SuggestWidget implements IContentWidget, IDelegate<ICompletionItem>
 
 	private updateWidgetHeight(): number {
 		let height = 0;
-		let maxSuggestionsToShow = this.editor.getLayoutInfo().contentWidth > this.minWidgetWidth ? 11 : 5;
+		let maxSuggestionsToShow = this.editor.getConfiguration().contribInfo.suggestExpandDocs === 'below' ? 5 : 11;
 
 		if (this.state === State.Empty || this.state === State.Loading) {
 			height = this.unfocusedHeight;
@@ -817,10 +822,12 @@ export class SuggestWidget implements IContentWidget, IDelegate<ICompletionItem>
 
 	private adjustWidgetWidth() {
 
-		// Message element is shown, list and docs are not
-		if (this.messageElement.style.display !== 'none'
-			&& this.details.element.style.display === 'none'
-			&& this.listElement.style.display === 'none') {
+		// Either docs are not chosen to be shown on the side
+		// Or Message element is shown, list and docs are not
+		if (this.editor.getConfiguration().contribInfo.suggestExpandDocs !== 'side'
+			|| (this.messageElement.style.display !== 'none'
+				&& this.details.element.style.display === 'none'
+				&& this.listElement.style.display === 'none')) {
 			addClass(this.element, 'small');
 			return;
 		}
@@ -836,6 +843,10 @@ export class SuggestWidget implements IContentWidget, IDelegate<ICompletionItem>
 	}
 
 	private adjustDocsPosition() {
+		if (this.editor.getConfiguration().contribInfo.suggestExpandDocs !== 'side') {
+			return;
+		}
+
 		const cursorCoords = this.editor.getScrolledVisiblePosition(this.editor.getPosition());
 		const editorCoords = getDomNodePagePosition(this.editor.getDomNode());
 		const cursorX = editorCoords.left + cursorCoords.left;
@@ -863,7 +874,8 @@ export class SuggestWidget implements IContentWidget, IDelegate<ICompletionItem>
 	}
 
 	private renderDetails(): void {
-		if (this.state === State.Details || this.state === State.Open) {
+		if (this.editor.getConfiguration().contribInfo.suggestExpandDocs !== 'none'
+			&& (this.state === State.Details || this.state === State.Open)) {
 			this.details.render(this.list.getFocusedElements()[0]);
 		} else {
 			this.details.render(null);

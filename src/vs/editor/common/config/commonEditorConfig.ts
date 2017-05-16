@@ -405,6 +405,12 @@ const editorConfiguration: IConfigurationNode = {
 			'minimum': 0,
 			'description': nls.localize('suggestLineHeight', "Line height for the suggest widget")
 		},
+		'editor.suggestExpandDocs': {
+			'type': 'string',
+			'enum': ['side', 'below', 'none'],
+			'default': EDITOR_DEFAULTS.contribInfo.suggestExpandDocs,
+			'description': nls.localize('suggestExpandDocs', "Controls where to auto-expand docs for suggestions")
+		},
 		'editor.selectionHighlight': {
 			'type': 'boolean',
 			'default': EDITOR_DEFAULTS.contribInfo.selectionHighlight,

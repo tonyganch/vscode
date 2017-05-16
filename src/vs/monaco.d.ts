@@ -2958,6 +2958,11 @@ declare module monaco.editor {
 		 */
 		suggestLineHeight?: number;
 		/**
+		 * Option to expand suggest docs.
+		 * Defaults to side
+		 */
+		suggestExpandDocs?: 'side' | 'below' | 'none';
+		/**
 		 * Enable selection highlight.
 		 * Defaults to true.
 		 */
@@ -3236,6 +3241,7 @@ declare module monaco.editor {
 		readonly wordBasedSuggestions: boolean;
 		readonly suggestFontSize: number;
 		readonly suggestLineHeight: number;
+		readonly suggestExpandDocs: 'side' | 'below' | 'none';
 		readonly selectionHighlight: boolean;
 		readonly occurrencesHighlight: boolean;
 		readonly codeLens: boolean;
