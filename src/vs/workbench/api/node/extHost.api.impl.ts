@@ -45,7 +45,6 @@ import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { CancellationTokenSource } from 'vs/base/common/cancellation';
 import * as vscode from 'vscode';
-import * as paths from 'vs/base/common/paths';
 import { realpath } from 'fs';
 import { MainContext, ExtHostContext, InstanceCollection, IInitData } from './extHost.protocol';
 import * as languageConfiguration from 'vs/editor/common/modes/languageConfiguration';
@@ -217,15 +216,11 @@ export function createApiFactory(
 
 		// namespace: extensions
 		const extensions: typeof vscode.extensions = {
-			getExtension(extensionId: string): Extension<any> {
-				let desc = extensionService.getExtensionDescription(extensionId);
-				if (desc) {
-					return new Extension(extensionService, desc);
-				}
-				return undefined;
+			getExtension(extensionId: string): vscode.Extension<any> {
+				return extensionService.getExtension(extensionId);
 			},
-			get all(): Extension<any>[] {
-				return extensionService.getAllExtensionDescriptions().map((desc) => new Extension(extensionService, desc));
+			get all(): vscode.Extension<any>[] {
+				return extensionService.all();
 			}
 		};
 
@@ -543,34 +538,6 @@ export function createApiFactory(
 			ProcessTask: extHostTypes.ProcessTask
 		};
 	};
-}
-
-class Extension<T> implements vscode.Extension<T> {
-
-	private _extensionService: ExtHostExtensionService;
-
-	public id: string;
-	public extensionPath: string;
-	public packageJSON: any;
-
-	constructor(extensionService: ExtHostExtensionService, description: IExtensionDescription) {
-		this._extensionService = extensionService;
-		this.id = description.id;
-		this.extensionPath = paths.normalize(description.extensionFolderPath, true);
-		this.packageJSON = description;
-	}
-
-	get isActive(): boolean {
-		return this._extensionService.isActivated(this.id);
-	}
-
-	get exports(): T {
-		return <T>this._extensionService.get(this.id);
-	}
-
-	activate(): Thenable<T> {
-		return this._extensionService.activateById(this.id).then(() => this.exports);
-	}
 }
 
 export function initializeExtensionApi(extensionService: ExtHostExtensionService, apiFactory: IExtensionApiFactory): TPromise<void> {

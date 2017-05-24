@@ -62,6 +62,7 @@ export interface IInitData {
 		workspace: IWorkspace;
 	};
 	extensions: IExtensionDescription[];
+	disabledExtensions: IExtensionDescription[];
 	configuration: IWorkspaceConfigurationValues;
 	telemetryInfo: ITelemetryInfo;
 }
@@ -422,6 +423,8 @@ export abstract class ExtHostTreeViewsShape {
 export abstract class ExtHostExtensionServiceShape {
 	$localShowMessage(severity: Severity, msg: string): void { throw ni(); }
 	$activateExtension(extensionDescription: IExtensionDescription): TPromise<void> { throw ni(); }
+	$onExtensionsInstalled(extensionDescriptions: IExtensionDescription[]): void { throw ni(); }
+	$onExtensionsUnInstalled(extensionIds: string[]): void { throw ni(); }
 }
 
 export interface FileSystemEvents {

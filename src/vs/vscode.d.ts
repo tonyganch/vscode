@@ -3382,9 +3382,19 @@ declare module 'vscode' {
 		readonly extensionPath: string;
 
 		/**
+		 * `true` if the extesion is uninstalled.
+		 */
+		readonly isUninstalled: boolean;
+
+		/**
 		 * `true` if the extension has been activated.
 		 */
 		readonly isActive: boolean;
+
+		/**
+		 * `true` if the extension can be activated.
+		 */
+		readonly canActivate: boolean;
 
 		/**
 		 * The parsed contents of the extension's package.json.
@@ -3399,7 +3409,7 @@ declare module 'vscode' {
 
 		/**
 		 * Activates this extension and returns its public API.
-		 *
+		 * Returns an error promise if this extenion cannot be activated [canActivate](#canActivate).
 		 * @return A promise that will resolve when this extension has been activated.
 		 */
 		activate(): Thenable<T>;
@@ -5399,15 +5409,7 @@ declare module 'vscode' {
 		export function getExtension(extensionId: string): Extension<any> | undefined;
 
 		/**
-		 * Get an extension its full identifier in the form of: `publisher.name`.
-		 *
-		 * @param extensionId An extension identifier.
-		 * @return An extension or `undefined`.
-		 */
-		export function getExtension<T>(extensionId: string): Extension<T> | undefined;
-
-		/**
-		 * All extensions currently known to the system.
+		 * All extensions currently known to the current instance of the editor.
 		 */
 		export let all: Extension<any>[];
 	}

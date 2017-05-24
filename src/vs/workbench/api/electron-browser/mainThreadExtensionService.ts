@@ -12,8 +12,8 @@ import * as path from 'path';
 import URI from 'vs/base/common/uri';
 import { AbstractExtensionService, ActivatedExtension } from 'vs/platform/extensions/common/abstractExtensionService';
 import { IMessage, IExtensionDescription, IExtensionsStatus } from 'vs/platform/extensions/common/extensions';
-import { IExtensionEnablementService } from 'vs/platform/extensionManagement/common/extensionManagement';
-import { areSameExtensions } from 'vs/platform/extensionManagement/common/extensionManagementUtil';
+import { IExtensionEnablementService, IExtensionManagementService } from 'vs/platform/extensionManagement/common/extensionManagement';
+import { areSameExtensions, getIdAndVersionFromLocalExtensionId } from 'vs/platform/extensionManagement/common/extensionManagementUtil';
 import { ExtensionsRegistry, ExtensionPoint, IExtensionPointUser, ExtensionMessageCollector } from 'vs/platform/extensions/common/extensionsRegistry';
 import { ExtensionScanner, MessagesCollector } from 'vs/workbench/node/extensionPoints';
 import { IMessageService } from 'vs/platform/message/common/message';
@@ -51,6 +51,7 @@ const hasOwnProperty = Object.hasOwnProperty;
 
 export class MainProcessExtensionService extends AbstractExtensionService<ActivatedExtension> {
 
+	private _disabledExtensionsPromise: TPromise<IExtensionDescription[]>;
 	private _threadService: IThreadService;
 	private _messageService: IMessageService;
 	private _proxy: ExtHostExtensionServiceShape;
@@ -66,6 +67,7 @@ export class MainProcessExtensionService extends AbstractExtensionService<Activa
 		@IExtensionEnablementService extensionEnablementService: IExtensionEnablementService,
 		@ITelemetryService telemetryService: ITelemetryService,
 		@IEnvironmentService private environmentService: IEnvironmentService,
+		@IExtensionManagementService private extensionManagementService: IExtensionManagementService
 	) {
 		super(false);
 		this._isDev = !environmentService.isBuilt || environmentService.isExtensionDevelopment;
@@ -75,19 +77,47 @@ export class MainProcessExtensionService extends AbstractExtensionService<Activa
 		this._proxy = this._threadService.get(ExtHostContext.ExtHostExtensionService);
 		this._extensionsStatus = {};
 
-		const disabledExtensions = [
+		const disabledExtensionIds = [
 			...extensionEnablementService.getGloballyDisabledExtensions(),
 			...extensionEnablementService.getWorkspaceDisabledExtensions()
 		];
 
-		this.scanExtensions().done(extensionDescriptions => {
+		this._disabledExtensionsPromise = this.scanExtensions().then(extensionDescriptions => {
 
 			telemetryService.publicLog('extensionsScanned', {
 				totalCount: extensionDescriptions.length,
-				disabledCount: disabledExtensions.length
+				disabledCount: disabledExtensionIds.length
 			});
 
-			this._onExtensionDescriptions(disabledExtensions.length ? extensionDescriptions.filter(e => disabledExtensions.every(id => !areSameExtensions({ id }, e))) : extensionDescriptions);
+			const disabledExtensions = [];
+			let enabledExtensions = [];
+
+			if (disabledExtensionIds.length) {
+				for (const extension of extensionDescriptions) {
+					if (disabledExtensionIds.some(id => areSameExtensions({ id }, extension))) {
+						disabledExtensions.push(extension);
+					} else {
+						enabledExtensions.push(extension);
+					}
+				}
+			} else {
+				enabledExtensions = extensionDescriptions;
+			}
+
+			this._onExtensionDescriptions(enabledExtensions);
+			return disabledExtensions;
+		});
+
+		this.extensionManagementService.onDidInstallExtension(e => {
+			if (e.local && !e.error) {
+				this.scanExtension([path.join(this.environmentService.extensionsPath, e.local.id)])
+					.then(extensions => this._proxy.$onExtensionsInstalled(extensions));
+			}
+		});
+		this.extensionManagementService.onDidUninstallExtension(e => {
+			if (!e.error) {
+				this._proxy.$onExtensionsUnInstalled([getIdAndVersionFromLocalExtensionId(e.id).id]);
+			}
 		});
 	}
 
@@ -98,6 +128,10 @@ export class MainProcessExtensionService extends AbstractExtensionService<Activa
 			this._extensionsStatus[msg.source] = { messages: [] };
 		}
 		this._extensionsStatus[msg.source].messages.push(msg);
+	}
+
+	getDisabledExtensions(): TPromise<IExtensionDescription[]> {
+		return this._disabledExtensionsPromise;
 	}
 
 	public $localShowMessage(severity: Severity, msg: string): void {
@@ -229,5 +263,18 @@ export class MainProcessExtensionService extends AbstractExtensionService<Activa
 			collector.getMessages().forEach(entry => this.$localShowMessage(entry.type, this._isDev ? (entry.source ? '[' + entry.source + ']: ' : '') + entry.message : entry.message));
 			return extensions;
 		});
+	}
+
+	private scanExtension(extensionPaths: string[]): TPromise<IExtensionDescription[]> {
+		const collector = new MessagesCollector();
+		const version = pkg.version;
+
+		return TPromise.join(extensionPaths.map(extensionPath => ExtensionScanner.scanOneOrMultipleExtensions(version, collector, extensionPath, false)))
+			.then((extensionDescriptions: IExtensionDescription[][]) => {
+				return extensionDescriptions.reduce((result, [extensionDescription]) => {
+					result.push(extensionDescription);
+					return result;
+				}, []);
+			});
 	}
 }

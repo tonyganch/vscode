@@ -238,7 +238,7 @@ export class ExtensionHostProcessWorker {
 	}
 
 	private createExtHostInitData(): TPromise<IInitData> {
-		return TPromise.join<any>([this.telemetryService.getTelemetryInfo(), this.extensionService.getExtensions()]).then(([telemetryInfo, extensionDescriptions]) => {
+		return TPromise.join<any>([this.telemetryService.getTelemetryInfo(), this.extensionService.getExtensions(), this.extensionService.getDisabledExtensions()]).then(([telemetryInfo, extensionDescriptions, disabledExtensions]) => {
 			return <IInitData>{
 				parentPid: process.pid,
 				environment: {
@@ -255,6 +255,7 @@ export class ExtensionHostProcessWorker {
 					workspace: this.contextService.getWorkspace()
 				},
 				extensions: extensionDescriptions,
+				disabledExtensions,
 				configuration: this.configurationService.values(),
 				telemetryInfo
 			};

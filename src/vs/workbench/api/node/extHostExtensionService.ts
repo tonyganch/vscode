@@ -6,6 +6,8 @@
 
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
 import { join } from 'path';
+import * as vscode from 'vscode';
+import * as paths from 'vs/base/common/paths';
 import { mkdirp, dirExists } from 'vs/base/node/pfs';
 import Severity from 'vs/base/common/severity';
 import { TPromise } from 'vs/base/common/winjs.base';
@@ -18,6 +20,7 @@ import { IThreadService } from 'vs/workbench/services/thread/common/threadServic
 import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
 import { MainContext, MainProcessExtensionServiceShape, IEnvironment, IInitData } from './extHost.protocol';
 import { createHash } from 'crypto';
+import { areSameExtensions } from 'vs/platform/extensionManagement/common/extensionManagementUtil';
 
 const hasOwnProperty = Object.hasOwnProperty;
 
@@ -166,6 +169,8 @@ export interface IExtensionContext {
 
 export class ExtHostExtensionService extends AbstractExtensionService<ExtHostExtension> {
 
+	private _extensions: ExtensionWrapper[];
+
 	private _threadService: IThreadService;
 	private _storage: ExtHostStorage;
 	private _storagePath: ExtensionStoragePath;
@@ -179,6 +184,10 @@ export class ExtHostExtensionService extends AbstractExtensionService<ExtHostExt
 	constructor(initData: IInitData, threadService: IThreadService, telemetryService: ITelemetryService, contextService: IWorkspaceContextService) {
 		super(false);
 		this._registry.registerExtensions(initData.extensions);
+
+		this._extensions = initData.extensions.map(extension => new ExtensionWrapper(extension, true, this));
+		this._extensions.push(...initData.disabledExtensions.map(extension => new ExtensionWrapper(extension, false, this)));
+
 		this._threadService = threadService;
 		this._storage = new ExtHostStorage(threadService);
 		this._storagePath = new ExtensionStoragePath(contextService, initData.environment);
@@ -189,6 +198,34 @@ export class ExtHostExtensionService extends AbstractExtensionService<ExtHostExt
 		// initialize API first
 		const apiFactory = createApiFactory(initData, threadService, this, this._contextService, this._telemetryService);
 		initializeExtensionApi(this, apiFactory).then(() => this._triggerOnReady());
+	}
+
+	public all(): vscode.Extension<any>[] {
+		return this._extensions.map(extension => extension.toExtension());
+	}
+
+	public getExtension(extensionId: string): vscode.Extension<any> {
+		const extension = this._extensions.filter(extension => areSameExtensions(extension, { id: extensionId }))[0];
+		if (extension) {
+			return extension.toExtension();
+		}
+		return undefined;
+	}
+
+	public $onExtensionsInstalled(extensionDescriptions: IExtensionDescription[]): void {
+		this._extensions.push(...extensionDescriptions.map(extension => new ExtensionWrapper(extension, false, this)));
+	}
+
+	public $onExtensionsUnInstalled(extensionIds: string[]): void {
+		for (const extensionId of extensionIds) {
+			const extension = this._extensions.filter(extension => areSameExtensions(extension, { id: extensionId }))[0];
+			if (extension) {
+				extension.isUninstalled = true;
+				if (!this._registry.getAllExtensionDescriptions().some(extension => areSameExtensions(extension, { id: extensionId }))) {
+					this._extensions.splice(this._extensions.indexOf(extension), 1);
+				}
+			}
+		}
 	}
 
 	public getAllExtensionDescriptions(): IExtensionDescription[] {
@@ -399,4 +436,47 @@ function getTelemetryActivationEvent(extensionDescription: IExtensionDescription
 	}
 
 	return event;
+}
+
+class ExtensionWrapper {
+
+	public id: string;
+	public extensionPath: string;
+	public packageJSON: any;
+	public isUninstalled: boolean = false;
+
+	constructor(description: IExtensionDescription, private canActivate: boolean, private _extensionService: ExtHostExtensionService) {
+		this.id = description.id;
+		this.extensionPath = paths.normalize(description.extensionFolderPath, true);
+		this.packageJSON = description;
+	}
+
+	private getExports(): any {
+		return this._extensionService.get(this.id);
+	}
+
+	toExtension<T>(): vscode.Extension<T> {
+		const wrapper = this;
+		return {
+			id: wrapper.id,
+			extensionPath: wrapper.extensionPath,
+			packageJSON: wrapper.packageJSON,
+			canActivate: wrapper.canActivate,
+			get isActive(): boolean {
+				return wrapper._extensionService.isActivated(wrapper.id);
+			},
+			get exports(): T {
+				return wrapper.getExports();
+			},
+			activate: () => {
+				if (!wrapper.canActivate) {
+					return TPromise.wrapError('Cannot activate a disabled extension');
+				}
+				return wrapper._extensionService.activateById(wrapper.id).then(() => wrapper.getExports());
+			},
+			get isUninstalled(): boolean {
+				return wrapper.isUninstalled;
+			}
+		};
+	}
 }
