@@ -36,6 +36,8 @@ var args = minimist(process.argv, {
 	string: ['user-data-dir', 'locale']
 });
 
+app.commandLine.appendSwitch('site-per-process');
+
 function stripComments(content) {
 	var regexp = /("(?:[^\\\"]*(?:\\.)?)*")|('(?:[^\\\']*(?:\\.)?)*')|(\/\*(?:\r?\n|.)*?\*\/)|(\/{2,}.*?(?:(?:\r?\n)|$))/g;
 	var result = content.replace(regexp, function (match, m1, m2, m3, m4) {
